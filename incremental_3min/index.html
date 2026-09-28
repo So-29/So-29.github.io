@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#785750" />
+  <title>3分ねこクリッカー</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<!-- is-idle: 最初の「開始」を押すまでの待機画面。CSSで猫・開始ボタン・ランキングだけにします。 -->
+<body class="is-idle">
+  <main class="app-shell">
+    <!-- =====================================================
+         左側: プレイ中ずっと見えていてほしい情報
+         PCではこの列自体が固定され、右側のショップだけスクロールします。
+         ===================================================== -->
+    <section class="play-column" aria-label="ゲーム画面">
+      <header class="game-title">
+        <div>
+          <p class="tiny-label">3 MINUTE NEKO CLICKER</p>
+          <h1>3分ねこクリッカー</h1>
+        </div>
+        <div class="timer-box" aria-live="polite">
+          <span>のこり</span>
+          <strong id="timer">03:00.0</strong>
+        </div>
+      </header>
+
+      <section class="score-board" aria-label="ポイントとスコア">
+        <!--
+          プレイ中の判断で最も重要なのは「今いくら買い物に使えるか」なので、
+          所持ポイントを一番大きく表示します。累計スコアは補助情報です。
+        -->
+        <div class="wallet-main">
+          <span class="wallet-label">いま使える ねこポイント</span>
+          <strong id="currency" class="wallet-score">0</strong>
+          <!-- v19: <wbr> の位置でだけ改行します(単語の途中で折り返さない) -->
+          <small class="no-split">pt / ショップで<wbr>使える残高</small>
+        </div>
+        <div class="secondary-score">
+          <span>累計スコア</span>
+          <b id="totalScore">0</b>
+          <small class="no-split">買い物しても<wbr>減らない<wbr>最終得点</small>
+        </div>
+      </section>
+
+      <section class="cat-stage">
+        <button id="mainButton" class="cat-button" type="button" disabled aria-label="猫をクリックしてポイントを増やす">
+          <!--
+            このプロジェクト内の画像はすべて assets/cat.png を参照します。
+            将来画像を変えたい時は、この1ファイルを差し替えるだけでOKです。
+          -->
+          <img src="assets/cat.png" alt="驚いた表情の猫" draggable="false" />
+          <span class="click-sticker">ねこをクリック！<small class="key-hint"><kbd>スペース</kbd><kbd>Enter</kbd>でも連打OK</small></span>
+          <!-- 待機画面だけ出る札。開始前に押しても反応しないので「スタート後に連打」と案内します -->
+          <span class="idle-sticker">スタートしたら、ここを連打！<small class="key-hint"><kbd>スペース</kbd><kbd>Enter</kbd>キーでも押せるよ</small></span>
+          <!-- 残り10秒のカウント。pointer-events:none なのでクリックの邪魔はしません -->
+          <span id="finalCount" class="final-count" hidden>10</span>
+          <div id="helperHands" class="helper-hands" aria-hidden="true">
+            <div class="paw-hand paw-1"></div>
+            <div class="paw-hand paw-2"></div>
+            <div class="paw-hand paw-3"></div>
+            <div class="paw-hand paw-4"></div>
+          </div>
+          <div id="helperPulseBadge" class="helper-pulse-badge" hidden>バイト発動！</div>
+        </button>
+
+        <!--
+          v14: Cookie Clicker のニュース欄風の「流れるTIPS」。
+          v15: プレイ中の視線は猫に集まるので、ショップ上部から猫の真下へ移動しました。
+          ニュースっぽい見出しの中に、その時の状況に合ったヒントを混ぜて右から左へ流します。
+          中身は script.js の「ねこニュース」章で決めています。
+        -->
+        <div id="newsTicker" class="news-ticker" aria-label="ねこニュース">
+          <span class="news-label">ねこNEWS</span>
+          <div class="news-track">
+            <span id="newsText" class="news-text"></span>
+          </div>
+        </div>
+
+        <!--
+          v11: 以前は <b> の中に <span> を入れていたため、
+          「.live-stats span { display:block }」が数字にも効いて「+」と「1」が縦に割れていました。
+          値は <b> 1つにまとめ、単位ごとJavaScriptで書き込みます。
+        -->
+        <div class="live-stats">
+          <div>
+            <span class="stat-label">1クリック</span>
+            <b id="clickPower" class="stat-value">+1</b>
+          </div>
+          <div>
+            <span class="stat-label">自動生産</span>
+            <b id="autoCps" class="stat-value">0/秒</b>
+          </div>
+          <div>
+            <span class="stat-label">ねこバイト</span>
+            <b id="helperOwned" class="stat-value">0 匹</b>
+          </div>
+        </div>
+      </section>
+
+      <!-- プレイ中はCSSで隠し、そのぶん猫を大きく表示します。 -->
+      <section class="play-controls">
+        <button id="startButton" class="start-button" type="button">3分チャレンジ開始！</button>
+      </section>
+
+      <!-- 直近10プレイの中から上位5件だけを表示します。 -->
+      <section class="ranking-panel" aria-labelledby="rankingTitle">
+        <div class="ranking-heading">
+          <h2 id="rankingTitle">ねこランキング TOP 5</h2>
+          <span>直近10回</span>
+        </div>
+        <ol id="rankingList" class="ranking-list"></ol>
+      </section>
+
+      <p class="left-note">
+        ※ ランキング記録はこのブラウザに保存。11回目以降は古い記録から消えます。
+      </p>
+    </section>
+
+    <!-- =====================================================
+         右側: ショップ
+         この列だけ縦スクロールします。
+         上部のタブ・一括購入メニューは追従します。
+         ===================================================== -->
+    <section id="shopScroller" class="shop-column" aria-label="ショップ">
+      <div class="shop-toolbar">
+        <div class="shop-heading-row">
+          <div>
+            <p class="tiny-label">SHOP</p>
+            <h2>ねこ商店</h2>
+          </div>
+          <div class="shop-status-cluster">
+            <span id="gameStatus" class="status-badge">開始前</span>
+          </div>
+        </div>
+
+        <div class="shop-tabs" role="tablist" aria-label="ショップ分類">
+          <button id="facilityTab" class="shop-tab active" type="button" role="tab" aria-selected="true"
+            aria-controls="facilityPanel">
+            施設
+          </button>
+          <button id="upgradeTab" class="shop-tab" type="button" role="tab" aria-selected="false"
+            aria-controls="upgradePanel">
+            アップグレード
+            <span id="upgradeNotice" class="notice-dot" hidden>!</span>
+          </button>
+        </div>
+
+        <div class="quick-tools">
+          <div id="bulkControls" class="bulk-controls" aria-label="購入個数">
+            <span>まとめ買い:</span>
+            <button class="bulk-button active" data-bulk="1" type="button">1</button>
+            <button class="bulk-button" data-bulk="10" type="button">10</button>
+            <button class="bulk-button" data-bulk="max" type="button">MAX</button>
+          </div>
+          <!-- v18: 単品購入を連打している人にだけ出る案内 -->
+          <span id="bulkHint" class="bulk-hint" hidden>← まとめて買えるよ！ 指が助かる</span>
+        </div>
+      </div>
+
+      <!--
+        スマホや縦に短いPCでは、左の固定エリアを圧迫しないよう
+        ランキングをショップ側へ退避して表示します。
+        通常の横長PCではCSSで非表示です。
+      -->
+      <section class="responsive-ranking-panel" aria-labelledby="compactRankingTitle">
+        <div class="ranking-heading">
+          <h2 id="compactRankingTitle">ねこランキング TOP 5</h2>
+          <span>直近10回</span>
+        </div>
+        <ol id="compactRankingList" class="ranking-list"></ol>
+      </section>
+
+      <div class="shop-content">
+        <section id="facilityPanel" class="shop-panel" role="tabpanel" aria-labelledby="facilityTab">
+          <p class="panel-intro">
+            <b>施設</b>… 自動でポイントを増やす。買うほど値段が上がるよ。
+          </p>
+          <div id="facilityList" class="card-list"></div>
+        </section>
+
+        <section id="upgradePanel" class="shop-panel" role="tabpanel" aria-labelledby="upgradeTab" hidden>
+          <p class="panel-intro">
+            <b>アップグレード</b>… 条件を満たすと解禁。1回買えば効果はずっと続く。
+          </p>
+          <div id="upgradeList" class="card-list"></div>
+          <p id="upgradeEmpty" class="upgrade-empty" hidden></p>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <!-- 開始前の 3・2・1 カウントダウン演出 -->
+  <div id="startCountdown" class="start-countdown" hidden aria-live="assertive" aria-atomic="true">
+    <div class="countdown-burst" aria-hidden="true"></div>
+    <div id="countdownNumber" class="countdown-number">3</div>
+    <div id="countdownCaption" class="countdown-caption">READY?</div>
+  </div>
+
+  <!-- 3分終了時の結果画面 -->
+  <div id="resultModal" class="modal" hidden>
+    <!--
+      v18: 展示会で1台のPCを交代で遊ぶ前提なので、「結果をコピー」は廃止。
+      代わりに「スマホで撮って自慢しよう」と案内します。
+      写真に収まりやすいよう、PCでは左右2列(左: スコア / 右: グラフとランキング)にして
+      スクロールなしで1画面に収めます。スマホでは従来どおり1列です。
+    -->
+    <div class="result-card" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+      <div class="result-main">
+        <img src="assets/cat.png" alt="結果を見守る猫" class="result-cat" />
+        <p class="tiny-label">TIME UP!!!!!!!!</p>
+        <h2 id="resultTitle">3分おわり！</h2>
+        <div id="rankInBanner" class="rank-in-banner" hidden>
+          <span>★ RANK IN ★</span>
+          <strong id="rankInText">第1位！</strong>
+        </div>
+        <p class="result-caption">今回のスコア</p>
+        <strong id="finalScore" class="final-score">0</strong>
+        <p id="bestCompare" class="best-compare"></p>
+        <p class="photo-prompt">
+          <span class="photo-icon" aria-hidden="true"></span>
+          <span><b>撮影OK！</b>この画面をスマホで撮って自慢しよう</span>
+        </p>
+      </div>
+      <div class="result-side">
+        <!-- v13: 3分間の累計スコアの伸び。0:00〜3:00、縦線は1分ごと、★は宇宙センター到達 -->
+        <figure class="growth-chart">
+          <svg id="growthChart" viewBox="0 0 300 90" role="img"
+            aria-label="3分間の累計スコアの伸び"></svg>
+          <figcaption id="growthCaption"></figcaption>
+        </figure>
+        <div class="result-grid">
+          <span>手動クリック <b id="finalClicks">0</b>回</span>
+          <span>施設数 <b id="finalFacilities">0</b>個</span>
+          <span>購入アップグレード <b id="finalUpgrades">0</b>個</span>
+        </div>
+        <section class="result-ranking">
+          <h3>直近10回の TOP 5</h3>
+          <ol id="resultRankingList" class="ranking-list result-ranking-list"></ol>
+        </section>
+        <button id="retryButton" class="start-button retry-button" type="button">もう1回やる</button>
+        <!-- v19: 誰も触らないと、この秒数の後にタイトル(待機画面)へ戻ります -->
+        <p id="autoReturnText" class="auto-return-text"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新しいアップグレードが解禁された時などに出る小さなお知らせ -->
+  <div id="toastArea" class="toast-area" aria-live="polite"></div>
+
+  <script src="script.js"></script>
+</body>
+
+</html>
